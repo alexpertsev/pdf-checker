@@ -2,7 +2,10 @@ import java.io.InputStream;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.util.Set;
+import java.util.Vector;
 import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
 import java.util.ArrayList;
 import java.awt.image.BufferedImage; 
 import javax.imageio.ImageIO;
@@ -25,6 +28,9 @@ public class PdfImageCheckRender implements RenderListener {
     private int page;
     private Rectangle pagesize;
     private StringBuffer result = new StringBuffer();
+	private Map<PdfKey, Vector<PageDPI>> exceptionsList;
+	public static final double DPI_THRESHOLD = 598.0;
+
 
     public String getResultantText() {
 	return result.toString();
@@ -33,10 +39,11 @@ public class PdfImageCheckRender implements RenderListener {
     /**
      * Creates a RenderListener that will look for images.
      */
-    public PdfImageCheckRender( String filename, int page, Rectangle pagesize ) {
-	this.filename = filename;
-	this.page     = page;
-	this.pagesize = pagesize;
+    public PdfImageCheckRender( String filename, int page, Rectangle pagesize, Map<PdfKey, Vector<PageDPI>> exceptionsList ) {
+	  this.filename = filename;
+	  this.page     = page;
+	  this.pagesize = pagesize;
+	  this.exceptionsList = exceptionsList;
     }
  
     /**
@@ -94,16 +101,23 @@ public class PdfImageCheckRender implements RenderListener {
 		    //System.out.println( "scaled width:" + image.getScaledWidth() );
 		    //System.out.println( "scaled height:" + image.getScaledHeight() );
 		    //System.out.println( "pagesize:" + pagesize.getWidth() + "x" + pagesize.getHeight() + "\t" + image.getAbsoluteX() );
-		    PdfChecker.output( filename, "page"+page, "imagetype", img_obj.getFileType() );
+
+		    //PdfChecker.output( filename, "page"+page, "imagetype", img_obj.getFileType() );
 		    if ( image.getDpiX() > 0 && image.getDpiY() > 0 ) {
-			PdfChecker.output( filename, "page"+page, "dpi-x", image.getDpiX() );
-			PdfChecker.output( filename, "page"+page, "dpi-y", image.getDpiY() );
+				double dpiX = image.getDpiX();
+	            double dpiY = image.getDpiY();
+				checkDPI(dpiX, dpiY);
+			// PdfChecker.output( filename, "page"+page, "dpi-x", image.getDpiX() );
+			// PdfChecker.output( filename, "page"+page, "dpi-y", image.getDpiY() );
 		    } else {
-			Matrix ctm = renderInfo.getImageCTM();
-			float widthScale = ctm.get( Matrix.I11 );
-			float heightScale = ctm.get( Matrix.I22 );
-			PdfChecker.output( filename, "page"+page, "dpi-x", image.getScaledWidth() / widthScale * 72f );
-			PdfChecker.output( filename, "page"+page, "dpi-y", image.getScaledHeight() / heightScale * 72f );
+				Matrix ctm = renderInfo.getImageCTM();
+				float widthScale = ctm.get( Matrix.I11 );
+				float heightScale = ctm.get( Matrix.I22 );
+				double dpiX = image.getScaledWidth() / widthScale * 72f;
+				double dpiY = image.getScaledHeight() / heightScale * 72f;
+				checkDPI(dpiX, dpiY);
+			// PdfChecker.output( filename, "page"+page, "dpi-x", image.getScaledWidth() / widthScale * 72f );
+			// PdfChecker.output( filename, "page"+page, "dpi-y", image.getScaledHeight() / heightScale * 72f );
 		    }
 		}
 	    }
@@ -127,8 +141,11 @@ public class PdfImageCheckRender implements RenderListener {
     private void outputWidthHeight( int width, int height ) {
 	//System.out.println( width + "x" + height );
 	if ( width > 0 && height > 0 ) {
-	    PdfChecker.output( filename, "page"+page, "dpi-x", width / pagesize.getWidth() * 72f );
-	    PdfChecker.output( filename, "page"+page, "dpi-y", height / pagesize.getHeight() * 72f );
+		double dpiX = width / pagesize.getWidth() * 72f;
+	    double dpiY = height / pagesize.getHeight() * 72f;
+		checkDPI(dpiX, dpiY);
+	    // PdfChecker.output( filename, "page"+page, "dpi-x", width / pagesize.getWidth() * 72f );
+	    // PdfChecker.output( filename, "page"+page, "dpi-y", height / pagesize.getHeight() * 72f );
 	} else {
 	    if ( filename != null ) {
 	    	System.err.print( filename + "\t" );
@@ -136,4 +153,12 @@ public class PdfImageCheckRender implements RenderListener {
 	    System.err.println( "image error (" + page + ")\tinvalid width or height: " + width + "x" + height );
 	}
     }
+
+	private void checkDPI(double dpiX, double dpiY) {
+	  if (dpiX < DPI_THRESHOLD || dpiY < DPI_THRESHOLD) {
+		PdfKey key = new PdfKey(filename, 0);
+		Vector<PageDPI> list = exceptionsList.get(key);
+		list.add(new PageDPI(page, dpiX, dpiY));
+	  }
+	}
 }
